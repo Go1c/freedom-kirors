@@ -7,20 +7,24 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.7.3] - 2026-07-25
 
-主题：**增加 Claude Opus 5 支持。**
+### Added
 
-### ✨ 新增
+- Added Claude Opus 5 compatibility using the upstream model identifier `claude-opus-5`.
+- Added `claude-opus-5-thinking` as a client-facing compatibility alias. The `-thinking` suffix enables the existing thinking configuration and is not forwarded as a separate upstream model identifier.
+- Added normalization for common Opus 5 name variants, including `opus-5`, `opus5`, and `opus.5`.
+- Added Opus 5 and its compatibility alias to the `/v1/models` response.
 
-- 新增 `claude-opus-5` 与 `claude-opus-5-thinking` 模型。
-- 支持 `opus-5`、`opus5`、`opus.5` 等输入形式，并统一映射到 Kiro 官方模型 ID `claude-opus-5`。
-- 为 Opus 5 启用完整 1M 上下文窗口，以及现有的原生 reasoning / effort 转换逻辑。
-- `/v1/models` 现在会返回 Opus 5 标准与 Thinking 两个变体。
+### Compatibility
 
-### 🧪 验证
+- Configured Opus 5 with a 1,000,000-token context window, consistent with Kiro's published availability information.
+- Reused the existing native reasoning and effort conversion path for Opus 5 requests.
+- Availability may depend on Kiro's experimental rollout, account eligibility, and region.
 
-- Anthropic 与 Kiro 官方均已确认 Opus 5 于 2026-07-24 上线；Kiro 当前提供实验支持。
-- Converter 测试 80 项通过，Handler 测试 13 项通过。
-- `cargo build --release` 通过，现网 systemd 服务已部署并正常运行。
+### Validation
+
+- Anthropic converter tests: 80 passed.
+- Anthropic handler tests: 13 passed.
+- `cargo check --locked` and `cargo build --release` completed successfully.
 
 
 ## [0.7.2] - 2026-07-21
