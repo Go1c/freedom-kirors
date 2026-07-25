@@ -4,14 +4,130 @@ All notable changes to this project are documented in this file. The format
 loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
+
+## [0.7.3] - 2026-07-25
+
+### Added
+
+- Added Claude Opus 5 compatibility using the upstream model identifier `claude-opus-5`.
+- Added `claude-opus-5-thinking` as a client-facing compatibility alias. The `-thinking` suffix enables the existing thinking configuration and is not forwarded as a separate upstream model identifier.
+- Added normalization for common Opus 5 name variants, including `opus-5`, `opus5`, and `opus.5`.
+- Added Opus 5 and its compatibility alias to the `/v1/models` response.
+
+### Compatibility
+
+- Configured Opus 5 with a 1,000,000-token context window, consistent with Kiro's published availability information.
+- Reused the existing native reasoning and effort conversion path for Opus 5 requests.
+- Availability may depend on Kiro's experimental rollout, account eligibility, and region.
+
+### Validation
+
+- Anthropic converter tests: 80 passed.
+- Anthropic handler tests: 13 passed.
+- `cargo check --locked` and `cargo build --release` completed successfully.
+
+
+## [0.7.2] - 2026-07-21
+
+主题：**增强生产凭据池稳定性，并让批量导入支持直接粘贴 Kiro Server Key**。
+
+### ⬆️ 包含官方 v0.7.1 更新
+
+本版基于官方 `v0.7.1` 合并后发布，除了本仓库的小版本修复，也包含官方 `0.7.1` 的完整更新：
+
+- **Codex CLI 完整工具桥接**：支持从 Responses 请求中收集 `function` / `custom` / `namespace` 工具声明，并转换为 Anthropic 兼容工具；响应时按工具类型正确返回 `function_call` 或 `custom_tool_call`。
+- **custom 自由文本工具支持**：将 Codex 的自由文本工具包装为 Anthropic schema，并在响应时解包为原始 input，适配 `apply_patch` / code-mode exec 等工具。
+- **Namespace 工具分组支持**：将 Codex namespace 工具展平转发，上游响应后再还原 `name` + `namespace`。
+- **Codex Agentic Loop 增强**：Codex 工具与原生 `web_search_20250305` 可共存，搜索由 kiro-rs 内部处理，其它 client 工具原样透传。
+- **Developer 角色映射**：Codex `role: developer` message item 会映射为 Anthropic system 消息，保证 AGENTS.md / user instructions / environment context 生效。
+- **推理摘要与搜索展示**：支持将上游 thinking 汇总为 Responses `reasoning` item，并把内部 web_search 渲染为 `web_search_call` 展示项。
+- **Responses SSE 事件补齐**：补齐 `reasoning`、`custom_tool_call`、`web_search_call` 的 output item added / delta / done 事件序列。
+- **工具结果后空响应修复**：修复上游在 `tool_result` 后返回空助手回合时，Codex 误判任务完成的问题；现在会重试一次，仍为空则返回 502。
+- **README / 文档同步**：更新 OpenAI Chat Completions / Responses、Codex CLI、GPT-5.6 模型族、流式格式和部署示例等说明。
+
+### ✨ 本仓库新增
+
+- **批量导入支持纯 `ksk_` Key 列表**：管理后台「批量导入」现在可直接粘贴一行一个 `ksk_...` Kiro Server Key，前端会自动识别并转换为 `authMethod=api_key` / `kiroApiKey` 凭据；原有 OAuth、API Key JSON 与 Enterprise SSO JSON 导入格式保持兼容。
+- **账号安全封禁识别**：新增 `TEMPORARILY_SUSPENDED` / security suspended 响应识别；命中后立即持久化禁用对应凭据并切换到其它可用凭据，避免继续重试污染凭据池。
+
+### 🔧 本仓库修复
+
+- **502 / Bad Gateway 坏号处理**：普通 502 不再无限当作瞬态错误重试；会记录凭据失败并故障转移，连续达到阈值后以 `BadGateway` 原因自动禁用。
+- **封禁响应兼容 502 包装**：部分网关会把上游账号封禁包装成 502，本版会先检测响应体中的封禁特征，再决定是否永久禁用凭据。
+
+### 🧪 验证
+
+- `admin-ui npm run build` 通过。
+- `cargo build --release` 通过。
+
+
+## [0.7.1] - 2026-07-15
+
+主题：**打通 Codex CLI 完整工具链——桥接 function / custom / namespace 工具到 Anthropic 模型，并修复工具结果后空响应导致任务误标记完成的问题**。0.7.0 引入了 Responses 端点使 Codex CLI 能连接 kiro-rs，但此前仅支持纯聊天与 Web 搜索——Codex 的真实工具（shell / apply_patch / view_image / MCP 等）被全部剥离，导致 Codex 无法读写文件、执行命令或编辑代码。本版补全工具桥接的全链路：从 Codex 的工具声明收集、到 Anthropic 模型侧的 schema 翻译、再到响应侧按声明类型正确生成 `function_call` 或 `custom_tool_call`——实现 Codex CLI 与 kiro-rs 的完整能力对齐。
+
+> 来源：[PR #39](https://github.com/ZyphrZero/kiro.rs/pull/39)。提交人：[@yeeyon](https://github.com/yeeyon)，感谢贡献。
+
+### ✨ 新功能 — Codex CLI 完整工具桥接
+
+- **请求方向收集工具声明**：同时从 `req.tools`（顶层）和 `additional_tools` input item（Codex 0.144 把工具声明放在此处）收集工具定义，合并转换后转发给上游模型，不再忽略 Codex 的真实工具。
+- **区分 `function` 与 `custom` 工具类型**：Codex 要求应答 item 类型与声明严格一致（否则抛出 "tool invoked with incompatible payload" 并终止本轮）。`function` 类型（shell / MCP / view_image 等）→ 应答 `function_call`（JSON arguments）；`custom` 类型（apply_patch / code-mode exec 等自由文本工具）→ 应答 `custom_tool_call`（原始字符串 input）。每请求维护一张 `ToolKindMap`，请求翻译时生成、响应构造时消费，保证出方向 item 类型永远正确。
+- **自由文本工具包装与解包**：Anthropic 侧没有自由文本工具概念，进方向将 custom 工具包装为 `{"input": <string>}` 单字段 schema（grammar / format 附到 description 提示模型输入格式），出方向通过多级回退链解出原始 input 字符串（模型偶尔不守 schema 时也能兜住）。
+- **Namespace 分组支持**：Codex 0.144 的 collaboration 子代理等工具挂在 `namespace` 分组下——对 Anthropic 模型展平为 `ns__name`（`__` 连接，避免与工具名中的 `.` 冲突），应答时还原为原 `name` + `namespace` 字段。
+- **混合工具集的 Agentic Loop**：有 Codex 工具时仍注入原生 `web_search_20250305`（除非客户端已声明同名工具），请求进入 web_search agentic loop——loop 内部消化 web_search、把其它 client 工具的 `tool_use` 原样透传，实现搜索与代码工具无缝共存。
+- **软化 System Prompt**：有 Codex 工具时使用软化 nudge（"Use your other tools normally for all other work"），替代无工具时的严格 nudge（"Do not call any other tool"），让模型自由选择搜索或执行代码工具。
+- **Developer 角色 → System 映射**：Codex 的 `role:developer` message item（AGENTS.md / user_instructions / environment_context）转为 Anthropic system 消息，确保技能文件和环境上下文到达模型。
+
+### ✨ 新功能 — 推理摘要与搜索展示（Phase 2）
+
+- **推理摘要 `reasoning` item**：从上游 reasoning 事件收集思考文本，通过顶层 `kiro_thinking` 字段（非 content block）出带传递——Anthropic 客户端忽略未知顶层字段，不会回放未签名的 thinking block；Responses 译者则将其渲染为 `reasoning` summary item，供 Codex UI 展示"模型正在思考"。
+- **`web_search_call` 展示项**：内部代答的 web_search 以 `server_tool_use` 块收集，在 Responses 响应中渲染为 `web_search_call` item（含 query 与 status），Codex 界面可展示 "Searched the web"。
+- **SSE 事件序列补齐**：新增 `reasoning`、`custom_tool_call`、`web_search_call` 三类 output item 的完整 SSE 事件序列（added → delta/part → done），每个 item 保证 `output_item.done` 携带完整内容（Codex 仅从 done 构建回合）。
+
+### 🔧 修复 — 工具结果后空助手响应
+
+- **问题**：上游 Kiro 偶尔在收到 `tool_result` 后返回一个只有思考文本（无可见 assistant text、无 client 工具调用）的回合——旧代码将其序列化为 `end_turn`，导致 Codex 将该回合视为任务完成、在工具尚未执行完时错误标记任务结束。
+- **修复**：新增 `empty_tool_result_disposition` 判别——仅当最后一轮 user 消息含 `tool_result`、且助手回合无可见文本、无工具调用、无终止原因时，判定为"空洞继续"。此时重试一次；重试仍空洞则返回 `502 Bad Gateway`（而非静默标记完成）。纯思考文本本身不足以构成有效继续——Codex 需要真实 assistant 文本或 client tool call 才能保持任务生命周期正确。
+- **kiro_thinking 不重复**：只有被接受的（非空洞）回合的思考文本才累积到 `all_thinking`；被丢弃的空洞回合的思考不被回放，避免与成功回合的总结重复或矛盾。
+
+### 📝 文档
+
+- **README 更新**：反映项目已支持 OpenAI Chat Completions / Responses 端点与 Codex CLI；补充 GPT-5.6 模型族说明、流式格式说明、部署示例更新到 0.7.0。
+
+### 🧪 测试
+
+- **20 个纯单元测试**（无网络依赖）覆盖：工具声明收集（additional_tools / 顶层 / 混合）、namespace 展平与还原、custom 工具包装 schema、function 工具 schema 原样映射、noop 回退、nudge 软化、web_search 名字冲突处理、custom_tool_call 回放往返、function_call_output 数组 stringify、developer→system 映射、reasoning/web_search_call/compaction 跳过、custom_input 多级回退链、build_view 输出类型与顺序、SSE 事件完整性。
+- **4 个空响应判别测试**：工具结果后空洞重试一次→失败、有文本/工具调用则不重试、仅思考文本无可见输出仍触发重试、仅最后一条消息决定是否为工具继续场景。
+- E2E 验证（gpt-5.6-sol + claude-sonnet-4-6）：shell 读文件、apply_patch 写文件、多轮循环、实时 web_search、只读 /plan 项目研究、技能发现——均无 incompatible payload 错误。
+
+## [0.7.0] - 2026-07-15
+
+主题：**新增 GPT-5.6 模型与 OpenAI Chat Completions / Responses 兼容端点，并统一入口 API Key 的生成与自定义配置语义**。OpenAI 协议客户端（包括仅支持 Responses API 的新版 Codex CLI）现在可以直接复用 Kiro 的模型映射、凭据故障转移、用量计量、工具调用与 WebSearch 链路；同时，程序生成的入口 Key 统一使用 `sk-` 前缀，鉴权不再限制前缀，`config.json` 中的 `apiKey` 可使用任意自定义值并作为系统密钥的权威配置。
+
+### ✨ 新功能 — GPT-5.6 与 OpenAI 协议兼容
+
+> 来源：[PR #38](https://github.com/ZyphrZero/kiro.rs/pull/38)。提交人：[@yeeyon](https://github.com/yeeyon)，感谢贡献。
+
+- **新增 GPT-5.6 模型族**：支持 `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`，模型 ID 原样传递给 Kiro；上下文窗口按 272K 处理，并通过 `GET /v1/models` 对外公布。
+- **新增 Chat Completions 端点**：`POST /v1/chat/completions` 支持 OpenAI 消息、工具调用、`reasoning_effort`、非流式响应与 SSE 响应，内部复用既有 Anthropic 请求管道。
+- **新增 Responses 端点**：`POST /v1/responses` 支持新版 Codex CLI 使用的 Responses API，转换 instructions / input / reasoning / function call，并生成对应的非流式响应或 SSE 事件序列。
+- **复用现有运行时能力**：两个 OpenAI 端点沿用同一套 API Key 鉴权、模型映射、多凭据故障转移、用量统计及 Kiro MCP WebSearch；`/cc/v1` Claude Code 路径保持不变。
+
+### 🔧 修复 — API Key 生成、自定义与轮换语义
+
+- **生成格式统一为 `sk-`**：服务端创建和轮换的客户端 Key 均为 `sk-` 加 32 位 base62 随机字符串；默认配置的生成值与示例配置值同样以 `sk-` 开头。
+- **鉴权只做完整值匹配**：删除 `csk_` 前缀常量与前缀校验，不增加旧前缀兼容分支；请求携带的 Key 只与未禁用的已存储明文做常量时间精确比较。
+- **允许任意自定义配置值**：`config.json.apiKey` 不要求 `sk-` 前缀。每次启动都将其同步为唯一的系统密钥 `id=0`；修改配置后旧系统密钥立即失效，现有名称、描述、分组与统计保持不变。
+- **Unicode 自定义 Key 安全脱敏**：管理端按 Unicode 字符而非 UTF-8 字节切片，非 ASCII 自定义 Key 不再因切到字符中间而触发运行时 panic。
+- **清理过时说明**：README、示例配置、Rust 注释与 Admin UI 统一为“系统密钥不可删除、可轮换”，移除当前文档中的 `csk_*` 生成规则描述。
+
 ## [0.6.26] - 2026-07-14
 
 ### ↩️ 回退 — `/v1/models` 恢复为固定静态列表
 
 撤销 0.6.25 的「按凭据实时探测上游可用模型」逻辑（按上游 `ListAvailableModels` 动态过滤）。改回固定静态列表：`/v1/models` 直接返回内置目录，不再实时请求凭据。
 
-- **移除不存在的模型**：删除当前号池凭据不提供的 `claude-fable-5` / `claude-fable-5-thinking` 与 `claude-sonnet-4-8` / `claude-sonnet-4-8-thinking`。
-- **固定当前号池支持的模型**：`/v1/models` 固定返回 25 个模型（17 个基座 + 8 个 Claude thinking 变体），与号池凭据实际支持一致。
+- **精简静态目录**：删除当时测试配置中不可用的 `claude-fable-5` / `claude-fable-5-thinking` 与 `claude-sonnet-4-8` / `claude-sonnet-4-8-thinking`。
+- **恢复固定目录**：`/v1/models` 固定返回 25 个模型（17 个基座 + 8 个 Claude thinking 兼容别名）。实际可用性仍取决于凭据、区域及上游服务状态。
 - **不再实时探测**：后续新增模型手动维护静态列表，不再读凭据。同时回退 0.6.25 引入的 `MultiTokenManager::supported_upstream_model_ids` 与 `KiroProvider::token_manager()` 探测代码。
 
 ## [0.6.25] - 2026-07-14
@@ -26,20 +142,21 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.6.24] - 2026-07-14
 
-### ✨ 新增 — 适配 GPT / Deepseek / MiniMax / GLM / Qwen 等非 Claude 上游模型
+### ✨ 新增 — 扩展非 Claude 模型兼容性
 
-此前 kiro-rs 的 `map_model` 只映射了 Claude 与 Fable 系模型。但上游凭据通过 `ListAvailableModels` 实际提供的可用模型远不止这些，还包括 OpenAI GPT 5.6、Deepseek、MiniMax、GLM、Qwen 等。由于这些模型没有对应映射，向它们发起的请求会被直接拒绝为 `UnsupportedModel`。本版将上游凭据支持的全部模型族一次性接入。
+此前 `map_model` 主要覆盖 Claude 与 Fable 系列。本版根据 `ListAvailableModels` 在测试环境中返回的模型标识符，增加 GPT、DeepSeek、MiniMax、GLM 和 Qwen 等模型的映射。上游模型目录可能随凭据、区域和服务更新而变化。
 
 - **扩展模型映射**：`map_model` 新增 `gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna`、`deepseek-3.2`、`minimax-m2.5` / `minimax-m2.1`、`glm-5`、`qwen3-coder-next`，并补上此前遗漏的 `claude-sonnet-4`。映射后的模型 ID 直接透传给上游。
-- **上下文窗口按模型区分**：`get_context_window_size` 改为返回每个模型的真实上限——GPT 5.6 系 272k、Qwen 256k、MiniMax 196k、Deepseek 164k，其余 200k。
+- **上下文窗口按模型区分**：`get_context_window_size` 按测试时 `ListAvailableModels` 返回的 `maxInputTokens` 配置——GPT 5.6 系 272k、Qwen 256k、MiniMax 196k、DeepSeek 164k，其余 200k。
 - **模型列表可发现**：`available_models()`（即 `/v1/models`）补齐上述 9 个新模型，客户端可直接列出并选用。
 - **reasoning 字段保持安全默认**：非 Claude 模型不在 `model_supports_native_reasoning` 白名单内，因此不会向其下发 `additionalModelRequestFields.output_config`，避免触发上游 400。该行为为 opt-in，完全向后兼容。
-- **测试**：新增 `test_map_model_non_claude` 与 `test_context_window_non_claude`；`gpt-4` 现已可映射，相应更新了过时的 `test_map_model_unsupported`。9 个新模型均通过真实凭据端到端验证，返回 200。
+- **测试**：新增 `test_map_model_non_claude` 与 `test_context_window_non_claude`；`gpt-4` 现已可映射，相应更新了过时的 `test_map_model_unsupported`。发布前使用测试凭据验证了 9 个新增模型的请求路径。
 
 
 ## [0.6.23] - 2026-07-11
 
-> 融合上游 v0.6.11（企业凭据余额/模型查询修复 + 上游 429 全链路传播，PR #35），保留全部本地生产能力。以下为吸纳的上游修复条目：
+> 合并上游项目 v0.6.11 的企业凭据查询修复和 429 传播改动（PR #35），并保留本仓库已有功能。
+
 
 主题：**修复 AWS Enterprise / IAM Identity Center 凭据首次模型调用后，Admin 余额与可用模型查询持续返回 400 的问题**。企业凭据会在首次流式模型请求前通过 `ListAvailableProfiles` 解析真实 `profileArn` 并持久化；旧代码随后将该 ARN 复用到固定使用 Kiro 0.9.2 兼容协议的 `getUsageLimits` 与 `ListAvailableModels` REST GET，导致上游返回 `400 Bad Request {"message":"Improperly formed request."}`。本版隔离流式端点与旧版 REST 端点的 ARN 语义，让企业模型调用和 Admin 查询可以同时正常工作。
 
@@ -61,9 +178,9 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - **Enterprise profile 发现保留限流**：`ListAvailableProfiles` 返回 429 时停止后续模型请求并原样传播合法 `Retry-After`，不再吞掉限流后继续使用缺失或占位 `profileArn`。
 - **隐藏上游敏感错误正文**：通用 502 对客户端使用稳定错误消息，AWS 账号、请求标识等原始响应仅保留在服务端日志中。
 
-## [0.6.10] - 2026-07-10
+## Upstream v0.6.10 integration - 2026-07-10
 
-主题：**融合上游 v0.6.10：放宽 Admin API 请求体上限修复批量导入 413**。合并 upstream `ZyphrZero/kiro.rs` v0.6.10（PR #34，[@l-spaces](https://github.com/l-spaces)）。本地二开分支已远超上游版本号，故以合并 commit 形式吸纳上游该修复，保留全部本地生产能力（自适应限流器、压测、延迟感知路由、缓存比例、M365 凭据、原子写等）。
+Merged the Admin request-body limit fix from upstream project v0.6.10 ([PR #34](https://github.com/ZyphrZero/kiro.rs/pull/34), [@l-spaces](https://github.com/l-spaces)) into this repository's existing release line.
 
 ### 🔧 修复 — Admin 批量导入 413（吸纳上游）
 
@@ -77,6 +194,8 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 - **凭据编辑对话框新增「并发上限」输入框**：后端早已支持凭据级 `maxInFlight` 覆盖（`POST /credentials/{id}/max-in-flight`），但前端编辑界面缺失入口，只能在卡片上只读查看生效值。现在可在编辑对话框直接设置/清除单凭据并发上限：留空回退账号档位默认，填写正整数则覆盖（优先于全局档位），改动即时生效并持久化。
 
+
+## [0.6.21] - 2026-07-09
 
 主题：**自适应并发限流器重构 + 可配置缓存读/写比例**。
 
@@ -94,6 +213,8 @@ project adheres to [Semantic Versioning](https://semver.org/).
   - 快照新增 `state` 状态机（idle/backing_off/recovering/holding/probing/healthy）、滑动窗口 429 率、距上次退避时间，前端徽章直接读 state，根除「永久已降速」误显示。
 - **流式 message_start 缓存比例修复**：实时流式 `/v1/messages` 的 message_start 事件补套缓存比例 policy，修复下游计费缓存占比被稀释、override 省钱效果打折的问题。
 
+
+## [0.6.20] - 2026-07-08
 
 主题：**压测模块专业化：支持大上下文、完整响应计时、全局聚合统计与计费护栏**。
 
@@ -113,12 +234,12 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 主题：**延迟感知路由 + Tool Call 全链路加固 + Sonnet 5 / Fable 5 模型 + 压测探针精确化**。
 
-> 说明：`v0.6.18` tag 打得偏早，以下功能在打 tag 之后陆续合入但未随 tag 发布，线上二进制早已包含。本版将其正式收敛为一个 release。
+> `v0.6.18` was tagged before these changes were merged. This release is the first published build that includes them.
 
 ### 新增
 
 - **balanced 模式延迟感知路由（EWMA）**：balanced 选号在健康度之外加入按凭据延迟的指数加权移动平均（EWMA），慢账号自动降权，避免流量持续打在响应慢的账号上。admin `/credentials` 端点透传 `latencyEwmaMs` 字段供前端观测。
-- **新增 Sonnet 5 / Fable 5 模型映射**：`converter` 模型映射表加入 `claude-sonnet-5`（及 thinking 变体）与 Fable 5 系列，放在 4-x 分支之前避免误判。
+- **新增 Sonnet 5 / Fable 5 模型映射**：`converter` 模型映射表加入 `claude-sonnet-5`、Fable 5 及对应的客户端 thinking 兼容别名，放在 4-x 分支之前避免误判。
 - **企业 SSO（Entra ID / Azure AD）external_idp 认证**：与 0.6.18 的 M365 支持配套的模型侧改动随本版一并发布。
 
 ### 修复 / 加固
@@ -146,7 +267,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.6.17] - 2026-06-29
 
-主题：**数据文件全面原子写，根治半截损坏丢数据风险**。
+主题：**数据文件全面改用原子写，降低写入中断导致的数据损坏风险**。
 
 ### 修复
 
@@ -159,7 +280,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 修复
 
-- **balanced 软启动播种口径与选号逻辑对齐**：0.6.15 的软启动用了裸 `success_count` 全局均值播种新号，与 `select_next_credential` 的选号口径不一致，存两个问题：(1) 选号比的是 `success_count / weight`，播种未乘新号 weight，weight>1 的新号仍会被砸流量；(2) 选号在 group 过滤后比较，而播种用了含禁用号、含其他组的全局均值，跨组污染会让新号在本组被过度冷落。现改为：只统计与新号同组的活跃号（新号无组取全部活跃号），按整体加权水位 `Σsuccess / Σweight` × 新号 weight 播种，使新号入场时 `success/weight` 恰好落在同组现有号的加权水位上。新增 weight / group 两个回归测试。
+- **balanced 软启动播种口径与选择逻辑对齐**：0.6.15 使用全局 `success_count` 均值初始化新凭据，与 `select_next_credential` 的 `success_count / weight` 比较口径及分组过滤范围不一致，可能造成新凭据短时间承接过多请求或在所属组内权重偏低。现在仅统计同组活跃凭据，并按 `Σsuccess / Σweight × 新凭据 weight` 初始化，使其加权水位与同组凭据一致。新增 weight / group 回归测试。
 
 
 ## [0.6.15] - 2026-06-28
@@ -168,7 +289,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 优化
 
-- **balanced 模式冷启动软启动**：新增凭据入库时 `success_count` 不再从 0 起，而是取现有号的均值。之前新号从 0 起会被加权 least-used 砸几乎全部流量，直到追平历史累计，与限速并发叠加形成对上游不友好的脉冲。现在新号从均值起步，平滑接入流量。
+- **balanced 模式冷启动软启动**：新增凭据入库时，`success_count` 以现有活跃凭据的均值初始化，而不是从 0 开始，避免加权 least-used 策略在冷启动阶段将过多请求集中到新凭据。
 
 ### 新增
 
@@ -181,8 +302,8 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 修复
 
-- **凭据去重漏判（中危）**：`add_credential` 的预去重比较 profileArn 时口径与入库不一致。entries 在 `MultiTokenManager::new` 构造时会被 `fill_default_profile_arn()` 填默认 ARN，而重新添加的新凭据可能 `profileArn=None`；直接拿原始 None 比较时 `Some(默认) ≠ None`，导致同 refreshToken 的重复凭据被放行、多走一次上游刷新甚至重复入库。现在去重前对新凭据克隆填默认 ARN 取有效值再比较，与入库口径一致。（修复了一直失败的回归测试 `test_add_credential_reject_duplicate_refresh_token`）
-- **配置持久化 load-modify-save 竞态（中危）**：5 个配置持久化点（负载均衡模式 / 账号级风控 / 档位并发 / 日志治理 / update_config_file）原先各自「load 全量 → 改各自切片 → save」，并发时后写覆盖先写丢更新。新增全局持久化锁 + `Config::persist_update` 辅助函数，把「锁→load 最新→改→原子 save」整段串行化，5 处统一走此函数。
+- **凭据去重漏判**：`add_credential` 的预去重比较 profileArn 时口径与入库不一致。entries 在 `MultiTokenManager::new` 构造时会被 `fill_default_profile_arn()` 填默认 ARN，而重新添加的新凭据可能 `profileArn=None`；直接拿原始 None 比较时 `Some(默认) ≠ None`，导致同 refreshToken 的重复凭据被放行、多走一次上游刷新甚至重复入库。现在去重前对新凭据克隆填默认 ARN 取有效值再比较，与入库口径一致。（修复了一直失败的回归测试 `test_add_credential_reject_duplicate_refresh_token`）
+- **配置持久化 load-modify-save 竞态**：5 个配置持久化点（负载均衡模式 / 账号级风控 / 档位并发 / 日志治理 / update_config_file）原先各自「load 全量 → 改各自切片 → save」，并发时后写覆盖先写丢更新。新增全局持久化锁 + `Config::persist_update` 辅助函数，把「锁→load 最新→改→原子 save」整段串行化，5 处统一走此函数。
 
 ### 清理
 
@@ -195,8 +316,8 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 修复
 
-- **固定间隔限速器并发下不匀速（高危）**：`AdaptiveLimiter::acquire` 的固定间隔分支原先「读 last_start → 算 wait → sleep → sleep 后才更新 last_start」，算 wait 时不预占。多个并发请求会读到同一个旧 last_start、算出相同 wait、同时醒来一起发车——在并发上限 32 时会在每个间隔刻度同时打出最多 32 个请求的尖峰脉冲，恰是上游速率惩罚敏感的模式。现改为在锁内**预占**下一个发车点（把 last_start 推进到 `prev + min_interval`），后续并发请求读到已推进值，真正错峰排成 T、T+interval、T+2*interval……。新增回归测试 `fixed_interval_reserves_slot_no_burst`。
-- **config.json 非原子写（中危）**：`Config::save` 原先用 `fs::write` 直接覆写线上文件，写到一半遇崩溃/磁盘满会把 config.json 截断损坏（credentials 路径、githubToken、callbackBaseUrl 等全丢）。现改为写同目录临时文件再 `rename` 原子替换。
+- **固定间隔限速器并发下不匀速**：`AdaptiveLimiter::acquire` 的固定间隔分支原先「读 last_start → 算 wait → sleep → sleep 后才更新 last_start」，算 wait 时不预占。多个并发请求会读到同一个旧 last_start、算出相同 wait、同时醒来一起发车——在并发上限 32 时会在每个间隔刻度同时打出最多 32 个请求的尖峰脉冲，恰是上游速率惩罚敏感的模式。现改为在锁内**预占**下一个发车点（把 last_start 推进到 `prev + min_interval`），后续并发请求读到已推进值，真正错峰排成 T、T+interval、T+2*interval……。新增回归测试 `fixed_interval_reserves_slot_no_burst`。
+- **config.json 非原子写**：`Config::save` 原先用 `fs::write` 直接覆写配置文件，进程崩溃、磁盘空间不足或写入中断时可能留下截断内容。现改为写入同目录临时文件后通过 `rename` 原子替换。
 
 
 ## [0.6.12] - 2026-06-28
@@ -229,16 +350,15 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - 压测探针/凭证卡片并发与RPM展示优化、缓存命中率统计工具 `tools/cache_hit_rate.py`。
 
 
-## [Freedom 二次开发版] - 2026-06-13
+## [Downstream changes] - 2026-06-13
 
-主题：**基于上游 v0.6.6 的生产部署增强版**。本节记录 `TWLW9784/freedom-kirors` 相对上游 `ZyphrZero/kiro.rs` 的二次开发、生产补丁和部署维护变更。后续每次合并官方仓库、调整本地生产补丁或推送部署仓库，都必须同步补充本节或新增日期小节，避免代码变化无记录。
+本节记录 `TWLW9784/freedom-kirors` 相对上游项目 `ZyphrZero/kiro.rs` 的早期下游改动。后续可发布变更按语义化版本记录在独立版本小节中。
 
-### 维护规范
+### Maintenance
 
-- **合并必写日志**：每次合并上游官方版本后，记录上游版本号、合并策略、冲突处理重点、保留/重做的本地补丁和验证结果。
-- **推送必写日志**：每次向 `freedom-kirors/main` 推送本地生产改动前，记录变更目的、影响范围、是否涉及配置/凭据/数据库以及验证命令。
-- **敏感文件不上库**：运行时配置、Kiro 凭据、客户端 Key、代理池、trace 数据库、缓存和备份文件必须保持 ignored；推送前做敏感路径和 token 模式检查。
-- **部署状态可追溯**：重要上线动作应记录提交号、构建命令、服务状态和关键接口健康检查结果。
+- 合并上游版本时记录来源版本、冲突处理和兼容性验证。
+- 发布前检查运行时配置、凭据、客户端 Key、数据库、缓存和备份文件未进入版本控制。
+- 面向实例的部署记录与公开 Changelog 分开维护。
 
 
 ## [0.6.10] - 2026-06-15
@@ -248,7 +368,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ### 修复
 
 - **IdC 登录后即时回填 profileArn**：之前 IdC 设备授权登录成功后，真实 profileArn 要等第一次实际请求才懒解析，中间约 2 分钟窗口内做模型测试会带占位 profileArn 打上游，吃 403 `bearer token invalid`。现在登录成功后立即主动调用 `resolve_profile_arn_for` 解析并回填，秒级完成。
-- **模型测试 403 兜底**：`test_credential_model` 在发请求前先确保真实 profileArn 已解析（即使即时回填因瞬态网络失败，这里再兜一次底），彻底消除新加 IdC 凭据后测试撞 403 的问题。
+- **模型测试 403 兜底**：`test_credential_model` 在发送请求前再次确认 `profileArn` 已解析，降低即时回填遇到瞬态网络失败后模型测试返回 403 的概率。
 
 ### 优化
 
@@ -283,7 +403,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - **合并上游 v0.6.6**：同步官方账号分组管理、密钥模型重构、Native web_search 识别收窄等改动，并保留生产部署中的凭据导入去重、实时并发展示、余额展示、压测页、限流监控、代理/端点增强等本地补丁。
 - **修复合并适配问题**：补齐后端分组 handler/router、前端分组筛选状态和类型定义，解决官方分组 UI 与本地 dashboard/压测/限流功能的冲突。
 - **沉淀部署仓库**：创建并推送 `TWLW9784/freedom-kirors/main`，本地生产分支统一为 `main` 并跟踪 `github-deploy/main`；删除远端多余 `master` 分支。
-- **补充二次开发说明**：README 新增“二次开发说明”，明确本仓库是基于上游 `ZyphrZero/kiro.rs` 的二次开发与生产部署版本，并说明主要增强方向。
+- **补充下游项目说明**：README 说明本仓库基于上游项目 `ZyphrZero/kiro.rs` 独立维护，并列出主要扩展方向。
 - **清理本地 Git 风险对象**：清空旧 stash、过期 reflog 并 GC，避免历史 stash 中的运行时文件在误操作时被带出。
 - **验证结果**：`cargo check --release`、`npm --prefix admin-ui run build`、`cargo build --release` 通过；`kiro-rs.service` 为 `active`；`/admin`、`/api/admin/credentials`、`/api/admin/groups`、`/api/admin/traces/recent-stats`、`/api/admin/limiter/snapshots` 均返回 200。
 
@@ -925,4 +1045,3 @@ project adheres to [Semantic Versioning](https://semver.org/).
    - 如需开启每日自动更新，添加 `"updateAutoApply": true` 与 `"updateAutoApplyTime": "03:00"`。
 4. **首次发布**
    - 维护者需在仓库 Settings → Secrets 添加 `DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN`，否则 CI 推送会失败。
-
