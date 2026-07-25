@@ -462,10 +462,9 @@ KIRO_API_KEY=ksk_xxx ./kiro-rs
 
 当前静态列表包含：
 
-- `claude-fable-5` / `claude-fable-5-thinking`
+- `claude-opus-5` / `claude-opus-5-thinking`
 - `claude-sonnet-5` / `claude-sonnet-5-thinking`
 - `claude-opus-4-8` / `claude-opus-4-8-thinking`
-- `claude-sonnet-4-8` / `claude-sonnet-4-8-thinking`
 - `claude-opus-4-7` / `claude-opus-4-7-thinking`
 - `claude-opus-4-6` / `claude-opus-4-6-thinking`
 - `claude-sonnet-4-6` / `claude-sonnet-4-6-thinking`
@@ -482,6 +481,7 @@ KIRO_API_KEY=ksk_xxx ./kiro-rs
 | `sonnet` + `4-8` / `4.8` | `claude-sonnet-4.8` |
 | `sonnet` + `4-6` / `4.6` | `claude-sonnet-4.6` |
 | `sonnet` + `4-5` / `4.5` | `claude-sonnet-4.5` |
+| `opus` + `5`（`opus-5` / `opus5` / `opus.5`） | `claude-opus-5` |
 | `opus` + `4-8` / `4.8` | `claude-opus-4.8` |
 | `opus` + `4-7` / `4.7` | `claude-opus-4.7` |
 | `opus` + `4-6` / `4.6` | `claude-opus-4.6` |
@@ -492,7 +492,7 @@ KIRO_API_KEY=ksk_xxx ./kiro-rs
 
 上下文窗口估算：
 
-- `claude-sonnet-4.6`、`claude-sonnet-4.8`、`claude-sonnet-5`、`claude-opus-4.6`、`claude-opus-4.7`、`claude-opus-4.8`、`claude-fable-5`：`1_000_000`
+- `claude-sonnet-4.6`、`claude-sonnet-4.8`、`claude-sonnet-5`、`claude-opus-5`、`claude-opus-4.6`、`claude-opus-4.7`、`claude-opus-4.8`、`claude-fable-5`：`1_000_000`
 - 其它模型：`200_000`
 
 <a id="thinking-tools-websearch"></a>

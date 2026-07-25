@@ -281,6 +281,12 @@ pub fn map_model(model: &str) -> Option<String> {
             Some("claude-opus-4.5".to_string())
         } else if model_lower.contains("4-6") || model_lower.contains("4.6") {
             Some("claude-opus-4.6".to_string())
+        } else if model_lower.contains("opus-5")
+            || model_lower.contains("opus5")
+            || model_lower.contains("opus.5")
+        {
+            // 精确匹配 5 代，与 sonnet-5 对齐
+            Some("claude-opus-5".to_string())
         } else {
             None
         }
@@ -302,7 +308,7 @@ pub fn get_context_window_size(model: &str) -> i32 {
             if mapped == "claude-sonnet-5"
                 || mapped == "claude-sonnet-4.6"
                 || mapped == "claude-sonnet-4.8"
-                || mapped == "claude-sonnet-5"
+                || mapped == "claude-opus-5"
                 || mapped == "claude-opus-4.6"
                 || mapped == "claude-opus-4.7"
                 || mapped == "claude-opus-4.8"
@@ -465,9 +471,10 @@ fn normalize_effort_for_model(model_id: &str, raw_effort: &str) -> Option<String
 fn model_supports_xhigh_effort(model_id: &str) -> bool {
     let model = model_id.to_ascii_lowercase();
 
-    // Anthropic documents xhigh for Opus 4.7/4.8, Fable 5, and Mythos 5.
+    // Anthropic documents xhigh for Opus 4.7/4.8/5, Fable 5, and Mythos 5.
     if model.contains("opus-4.7")
         || model.contains("opus-4.8")
+        || model.contains("opus-5")
         || model.contains("fable-5")
         || model.contains("mythos-5")
         || model.contains("claude-5")
@@ -1872,6 +1879,32 @@ mod tests {
     }
 
     #[test]
+    fn test_map_model_opus_5() {
+        assert_eq!(
+            map_model("claude-opus-5"),
+            Some("claude-opus-5".to_string())
+        );
+        assert_eq!(
+            map_model("claude-opus-5-thinking"),
+            Some("claude-opus-5".to_string())
+        );
+        assert_eq!(
+            map_model("claude-opus-5-20260101-thinking"),
+            Some("claude-opus-5".to_string())
+        );
+        // 点号 / 无连字符形式也应命中
+        assert_eq!(
+            map_model("claude-opus.5"),
+            Some("claude-opus-5".to_string())
+        );
+        assert_eq!(
+            map_model("claude-opus5"),
+            Some("claude-opus-5".to_string())
+        );
+        assert_eq!(get_context_window_size("claude-opus-5"), 1_000_000);
+    }
+
+    #[test]
     fn test_map_model_non_claude() {
         // GPT 5.6 系
         assert_eq!(map_model("gpt-5.6-sol"), Some("gpt-5.6-sol".to_string()));
@@ -2193,6 +2226,11 @@ mod tests {
             "opus 4.8 supports xhigh"
         );
         assert_eq!(
+            normalize_effort_for_model("claude-opus-5", "xhigh").as_deref(),
+            Some("xhigh"),
+            "opus 5 supports xhigh"
+        );
+        assert_eq!(
             normalize_effort_for_model("claude-5", "xhigh").as_deref(),
             Some("xhigh"),
             "claude 5 supports xhigh"
@@ -2260,6 +2298,7 @@ mod tests {
             "claude-opus-4.6",
             "claude-opus-4.7",
             "claude-opus-4.8",
+            "claude-opus-5",
             "claude-sonnet-4.6",
             "claude-fable-5",
             "claude-sonnet-5",
