@@ -5,6 +5,24 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project adheres to [Semantic Versioning](https://semver.org/).
 
 
+## [0.7.3] - 2026-07-25
+
+主题：**增加 Claude Opus 5 支持。**
+
+### ✨ 新增
+
+- 新增 `claude-opus-5` 与 `claude-opus-5-thinking` 模型。
+- 支持 `opus-5`、`opus5`、`opus.5` 等输入形式，并统一映射到 Kiro 官方模型 ID `claude-opus-5`。
+- 为 Opus 5 启用完整 1M 上下文窗口，以及现有的原生 reasoning / effort 转换逻辑。
+- `/v1/models` 现在会返回 Opus 5 标准与 Thinking 两个变体。
+
+### 🧪 验证
+
+- Anthropic 与 Kiro 官方均已确认 Opus 5 于 2026-07-24 上线；Kiro 当前提供实验支持。
+- Converter 测试 80 项通过，Handler 测试 13 项通过。
+- `cargo build --release` 通过，现网 systemd 服务已部署并正常运行。
+
+
 ## [0.7.2] - 2026-07-21
 
 主题：**增强生产凭据池稳定性，并让批量导入支持直接粘贴 Kiro Server Key**。
