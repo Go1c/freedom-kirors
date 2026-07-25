@@ -120,16 +120,14 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - **Unicode 自定义 Key 安全脱敏**：管理端按 Unicode 字符而非 UTF-8 字节切片，非 ASCII 自定义 Key 不再因切到字符中间而触发运行时 panic。
 - **清理过时说明**：README、示例配置、Rust 注释与 Admin UI 统一为“系统密钥不可删除、可轮换”，移除当前文档中的 `csk_*` 生成规则描述。
 
-## [0.6.11] - 2026-07-12
-
 ## [0.6.26] - 2026-07-14
 
 ### ↩️ 回退 — `/v1/models` 恢复为固定静态列表
 
 撤销 0.6.25 的「按凭据实时探测上游可用模型」逻辑（按上游 `ListAvailableModels` 动态过滤）。改回固定静态列表：`/v1/models` 直接返回内置目录，不再实时请求凭据。
 
-- **移除不存在的模型**：删除当前号池凭据不提供的 `claude-fable-5` / `claude-fable-5-thinking` 与 `claude-sonnet-4-8` / `claude-sonnet-4-8-thinking`。
-- **固定当前号池支持的模型**：`/v1/models` 固定返回 25 个模型（17 个基座 + 8 个 Claude thinking 变体），与号池凭据实际支持一致。
+- **精简静态目录**：删除当时测试配置中不可用的 `claude-fable-5` / `claude-fable-5-thinking` 与 `claude-sonnet-4-8` / `claude-sonnet-4-8-thinking`。
+- **恢复固定目录**：`/v1/models` 固定返回 25 个模型（17 个基座 + 8 个 Claude thinking 兼容别名）。实际可用性仍取决于凭据、区域及上游服务状态。
 - **不再实时探测**：后续新增模型手动维护静态列表，不再读凭据。同时回退 0.6.25 引入的 `MultiTokenManager::supported_upstream_model_ids` 与 `KiroProvider::token_manager()` 探测代码。
 
 ## [0.6.25] - 2026-07-14
@@ -144,20 +142,20 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.6.24] - 2026-07-14
 
-### ✨ 新增 — 适配 GPT / Deepseek / MiniMax / GLM / Qwen 等非 Claude 上游模型
+### ✨ 新增 — 扩展非 Claude 模型兼容性
 
-此前 kiro-rs 的 `map_model` 只映射了 Claude 与 Fable 系模型。但上游凭据通过 `ListAvailableModels` 实际提供的可用模型远不止这些，还包括 OpenAI GPT 5.6、Deepseek、MiniMax、GLM、Qwen 等。由于这些模型没有对应映射，向它们发起的请求会被直接拒绝为 `UnsupportedModel`。本版将上游凭据支持的全部模型族一次性接入。
+此前 `map_model` 主要覆盖 Claude 与 Fable 系列。本版根据 `ListAvailableModels` 在测试环境中返回的模型标识符，增加 GPT、DeepSeek、MiniMax、GLM 和 Qwen 等模型的映射。上游模型目录可能随凭据、区域和服务更新而变化。
 
 - **扩展模型映射**：`map_model` 新增 `gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna`、`deepseek-3.2`、`minimax-m2.5` / `minimax-m2.1`、`glm-5`、`qwen3-coder-next`，并补上此前遗漏的 `claude-sonnet-4`。映射后的模型 ID 直接透传给上游。
-- **上下文窗口按模型区分**：`get_context_window_size` 改为返回每个模型的真实上限——GPT 5.6 系 272k、Qwen 256k、MiniMax 196k、Deepseek 164k，其余 200k。
+- **上下文窗口按模型区分**：`get_context_window_size` 按测试时 `ListAvailableModels` 返回的 `maxInputTokens` 配置——GPT 5.6 系 272k、Qwen 256k、MiniMax 196k、DeepSeek 164k，其余 200k。
 - **模型列表可发现**：`available_models()`（即 `/v1/models`）补齐上述 9 个新模型，客户端可直接列出并选用。
 - **reasoning 字段保持安全默认**：非 Claude 模型不在 `model_supports_native_reasoning` 白名单内，因此不会向其下发 `additionalModelRequestFields.output_config`，避免触发上游 400。该行为为 opt-in，完全向后兼容。
-- **测试**：新增 `test_map_model_non_claude` 与 `test_context_window_non_claude`；`gpt-4` 现已可映射，相应更新了过时的 `test_map_model_unsupported`。9 个新模型均通过真实凭据端到端验证，返回 200。
+- **测试**：新增 `test_map_model_non_claude` 与 `test_context_window_non_claude`；`gpt-4` 现已可映射，相应更新了过时的 `test_map_model_unsupported`。发布前使用测试凭据验证了 9 个新增模型的请求路径。
 
 
 ## [0.6.23] - 2026-07-11
 
-> 融合上游 v0.6.11（企业凭据余额/模型查询修复 + 上游 429 全链路传播，PR #35），保留全部本地生产能力。以下为吸纳的上游修复条目：
+> 合并上游项目 v0.6.11 的企业凭据查询修复和 429 传播改动（PR #35），并保留本仓库已有功能。
 
 
 主题：**修复 AWS Enterprise / IAM Identity Center 凭据首次模型调用后，Admin 余额与可用模型查询持续返回 400 的问题**。企业凭据会在首次流式模型请求前通过 `ListAvailableProfiles` 解析真实 `profileArn` 并持久化；旧代码随后将该 ARN 复用到固定使用 Kiro 0.9.2 兼容协议的 `getUsageLimits` 与 `ListAvailableModels` REST GET，导致上游返回 `400 Bad Request {"message":"Improperly formed request."}`。本版隔离流式端点与旧版 REST 端点的 ARN 语义，让企业模型调用和 Admin 查询可以同时正常工作。
@@ -180,9 +178,9 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - **Enterprise profile 发现保留限流**：`ListAvailableProfiles` 返回 429 时停止后续模型请求并原样传播合法 `Retry-After`，不再吞掉限流后继续使用缺失或占位 `profileArn`。
 - **隐藏上游敏感错误正文**：通用 502 对客户端使用稳定错误消息，AWS 账号、请求标识等原始响应仅保留在服务端日志中。
 
-## [0.6.10] - 2026-07-10
+## Upstream v0.6.10 integration - 2026-07-10
 
-主题：**融合上游 v0.6.10：放宽 Admin API 请求体上限修复批量导入 413**。合并 upstream `ZyphrZero/kiro.rs` v0.6.10（PR #34，[@l-spaces](https://github.com/l-spaces)）。本地二开分支已远超上游版本号，故以合并 commit 形式吸纳上游该修复，保留全部本地生产能力（自适应限流器、压测、延迟感知路由、缓存比例、M365 凭据、原子写等）。
+Merged the Admin request-body limit fix from upstream project v0.6.10 ([PR #34](https://github.com/ZyphrZero/kiro.rs/pull/34), [@l-spaces](https://github.com/l-spaces)) into this repository's existing release line.
 
 ### 🔧 修复 — Admin 批量导入 413（吸纳上游）
 
@@ -196,6 +194,8 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 - **凭据编辑对话框新增「并发上限」输入框**：后端早已支持凭据级 `maxInFlight` 覆盖（`POST /credentials/{id}/max-in-flight`），但前端编辑界面缺失入口，只能在卡片上只读查看生效值。现在可在编辑对话框直接设置/清除单凭据并发上限：留空回退账号档位默认，填写正整数则覆盖（优先于全局档位），改动即时生效并持久化。
 
+
+## [0.6.21] - 2026-07-09
 
 主题：**自适应并发限流器重构 + 可配置缓存读/写比例**。
 
@@ -213,6 +213,8 @@ project adheres to [Semantic Versioning](https://semver.org/).
   - 快照新增 `state` 状态机（idle/backing_off/recovering/holding/probing/healthy）、滑动窗口 429 率、距上次退避时间，前端徽章直接读 state，根除「永久已降速」误显示。
 - **流式 message_start 缓存比例修复**：实时流式 `/v1/messages` 的 message_start 事件补套缓存比例 policy，修复下游计费缓存占比被稀释、override 省钱效果打折的问题。
 
+
+## [0.6.20] - 2026-07-08
 
 主题：**压测模块专业化：支持大上下文、完整响应计时、全局聚合统计与计费护栏**。
 
@@ -232,12 +234,12 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 主题：**延迟感知路由 + Tool Call 全链路加固 + Sonnet 5 / Fable 5 模型 + 压测探针精确化**。
 
-> 说明：`v0.6.18` tag 打得偏早，以下功能在打 tag 之后陆续合入但未随 tag 发布，线上二进制早已包含。本版将其正式收敛为一个 release。
+> `v0.6.18` was tagged before these changes were merged. This release is the first published build that includes them.
 
 ### 新增
 
 - **balanced 模式延迟感知路由（EWMA）**：balanced 选号在健康度之外加入按凭据延迟的指数加权移动平均（EWMA），慢账号自动降权，避免流量持续打在响应慢的账号上。admin `/credentials` 端点透传 `latencyEwmaMs` 字段供前端观测。
-- **新增 Sonnet 5 / Fable 5 模型映射**：`converter` 模型映射表加入 `claude-sonnet-5`（及 thinking 变体）与 Fable 5 系列，放在 4-x 分支之前避免误判。
+- **新增 Sonnet 5 / Fable 5 模型映射**：`converter` 模型映射表加入 `claude-sonnet-5`、Fable 5 及对应的客户端 thinking 兼容别名，放在 4-x 分支之前避免误判。
 - **企业 SSO（Entra ID / Azure AD）external_idp 认证**：与 0.6.18 的 M365 支持配套的模型侧改动随本版一并发布。
 
 ### 修复 / 加固
@@ -265,7 +267,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.6.17] - 2026-06-29
 
-主题：**数据文件全面原子写，根治半截损坏丢数据风险**。
+主题：**数据文件全面改用原子写，降低写入中断导致的数据损坏风险**。
 
 ### 修复
 
@@ -278,7 +280,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 修复
 
-- **balanced 软启动播种口径与选号逻辑对齐**：0.6.15 的软启动用了裸 `success_count` 全局均值播种新号，与 `select_next_credential` 的选号口径不一致，存两个问题：(1) 选号比的是 `success_count / weight`，播种未乘新号 weight，weight>1 的新号仍会被砸流量；(2) 选号在 group 过滤后比较，而播种用了含禁用号、含其他组的全局均值，跨组污染会让新号在本组被过度冷落。现改为：只统计与新号同组的活跃号（新号无组取全部活跃号），按整体加权水位 `Σsuccess / Σweight` × 新号 weight 播种，使新号入场时 `success/weight` 恰好落在同组现有号的加权水位上。新增 weight / group 两个回归测试。
+- **balanced 软启动播种口径与选择逻辑对齐**：0.6.15 使用全局 `success_count` 均值初始化新凭据，与 `select_next_credential` 的 `success_count / weight` 比较口径及分组过滤范围不一致，可能造成新凭据短时间承接过多请求或在所属组内权重偏低。现在仅统计同组活跃凭据，并按 `Σsuccess / Σweight × 新凭据 weight` 初始化，使其加权水位与同组凭据一致。新增 weight / group 回归测试。
 
 
 ## [0.6.15] - 2026-06-28
@@ -287,7 +289,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 优化
 
-- **balanced 模式冷启动软启动**：新增凭据入库时 `success_count` 不再从 0 起，而是取现有号的均值。之前新号从 0 起会被加权 least-used 砸几乎全部流量，直到追平历史累计，与限速并发叠加形成对上游不友好的脉冲。现在新号从均值起步，平滑接入流量。
+- **balanced 模式冷启动软启动**：新增凭据入库时，`success_count` 以现有活跃凭据的均值初始化，而不是从 0 开始，避免加权 least-used 策略在冷启动阶段将过多请求集中到新凭据。
 
 ### 新增
 
@@ -300,8 +302,8 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 修复
 
-- **凭据去重漏判（中危）**：`add_credential` 的预去重比较 profileArn 时口径与入库不一致。entries 在 `MultiTokenManager::new` 构造时会被 `fill_default_profile_arn()` 填默认 ARN，而重新添加的新凭据可能 `profileArn=None`；直接拿原始 None 比较时 `Some(默认) ≠ None`，导致同 refreshToken 的重复凭据被放行、多走一次上游刷新甚至重复入库。现在去重前对新凭据克隆填默认 ARN 取有效值再比较，与入库口径一致。（修复了一直失败的回归测试 `test_add_credential_reject_duplicate_refresh_token`）
-- **配置持久化 load-modify-save 竞态（中危）**：5 个配置持久化点（负载均衡模式 / 账号级风控 / 档位并发 / 日志治理 / update_config_file）原先各自「load 全量 → 改各自切片 → save」，并发时后写覆盖先写丢更新。新增全局持久化锁 + `Config::persist_update` 辅助函数，把「锁→load 最新→改→原子 save」整段串行化，5 处统一走此函数。
+- **凭据去重漏判**：`add_credential` 的预去重比较 profileArn 时口径与入库不一致。entries 在 `MultiTokenManager::new` 构造时会被 `fill_default_profile_arn()` 填默认 ARN，而重新添加的新凭据可能 `profileArn=None`；直接拿原始 None 比较时 `Some(默认) ≠ None`，导致同 refreshToken 的重复凭据被放行、多走一次上游刷新甚至重复入库。现在去重前对新凭据克隆填默认 ARN 取有效值再比较，与入库口径一致。（修复了一直失败的回归测试 `test_add_credential_reject_duplicate_refresh_token`）
+- **配置持久化 load-modify-save 竞态**：5 个配置持久化点（负载均衡模式 / 账号级风控 / 档位并发 / 日志治理 / update_config_file）原先各自「load 全量 → 改各自切片 → save」，并发时后写覆盖先写丢更新。新增全局持久化锁 + `Config::persist_update` 辅助函数，把「锁→load 最新→改→原子 save」整段串行化，5 处统一走此函数。
 
 ### 清理
 
@@ -314,8 +316,8 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### 修复
 
-- **固定间隔限速器并发下不匀速（高危）**：`AdaptiveLimiter::acquire` 的固定间隔分支原先「读 last_start → 算 wait → sleep → sleep 后才更新 last_start」，算 wait 时不预占。多个并发请求会读到同一个旧 last_start、算出相同 wait、同时醒来一起发车——在并发上限 32 时会在每个间隔刻度同时打出最多 32 个请求的尖峰脉冲，恰是上游速率惩罚敏感的模式。现改为在锁内**预占**下一个发车点（把 last_start 推进到 `prev + min_interval`），后续并发请求读到已推进值，真正错峰排成 T、T+interval、T+2*interval……。新增回归测试 `fixed_interval_reserves_slot_no_burst`。
-- **config.json 非原子写（中危）**：`Config::save` 原先用 `fs::write` 直接覆写线上文件，写到一半遇崩溃/磁盘满会把 config.json 截断损坏（credentials 路径、githubToken、callbackBaseUrl 等全丢）。现改为写同目录临时文件再 `rename` 原子替换。
+- **固定间隔限速器并发下不匀速**：`AdaptiveLimiter::acquire` 的固定间隔分支原先「读 last_start → 算 wait → sleep → sleep 后才更新 last_start」，算 wait 时不预占。多个并发请求会读到同一个旧 last_start、算出相同 wait、同时醒来一起发车——在并发上限 32 时会在每个间隔刻度同时打出最多 32 个请求的尖峰脉冲，恰是上游速率惩罚敏感的模式。现改为在锁内**预占**下一个发车点（把 last_start 推进到 `prev + min_interval`），后续并发请求读到已推进值，真正错峰排成 T、T+interval、T+2*interval……。新增回归测试 `fixed_interval_reserves_slot_no_burst`。
+- **config.json 非原子写**：`Config::save` 原先用 `fs::write` 直接覆写配置文件，进程崩溃、磁盘空间不足或写入中断时可能留下截断内容。现改为写入同目录临时文件后通过 `rename` 原子替换。
 
 
 ## [0.6.12] - 2026-06-28
@@ -348,16 +350,15 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - 压测探针/凭证卡片并发与RPM展示优化、缓存命中率统计工具 `tools/cache_hit_rate.py`。
 
 
-## [Freedom 二次开发版] - 2026-06-13
+## [Downstream changes] - 2026-06-13
 
-主题：**基于上游 v0.6.6 的生产部署增强版**。本节记录 `TWLW9784/freedom-kirors` 相对上游 `ZyphrZero/kiro.rs` 的二次开发、生产补丁和部署维护变更。后续每次合并官方仓库、调整本地生产补丁或推送部署仓库，都必须同步补充本节或新增日期小节，避免代码变化无记录。
+本节记录 `TWLW9784/freedom-kirors` 相对上游项目 `ZyphrZero/kiro.rs` 的早期下游改动。后续可发布变更按语义化版本记录在独立版本小节中。
 
-### 维护规范
+### Maintenance
 
-- **合并必写日志**：每次合并上游官方版本后，记录上游版本号、合并策略、冲突处理重点、保留/重做的本地补丁和验证结果。
-- **推送必写日志**：每次向 `freedom-kirors/main` 推送本地生产改动前，记录变更目的、影响范围、是否涉及配置/凭据/数据库以及验证命令。
-- **敏感文件不上库**：运行时配置、Kiro 凭据、客户端 Key、代理池、trace 数据库、缓存和备份文件必须保持 ignored；推送前做敏感路径和 token 模式检查。
-- **部署状态可追溯**：重要上线动作应记录提交号、构建命令、服务状态和关键接口健康检查结果。
+- 合并上游版本时记录来源版本、冲突处理和兼容性验证。
+- 发布前检查运行时配置、凭据、客户端 Key、数据库、缓存和备份文件未进入版本控制。
+- 面向实例的部署记录与公开 Changelog 分开维护。
 
 
 ## [0.6.10] - 2026-06-15
@@ -367,7 +368,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ### 修复
 
 - **IdC 登录后即时回填 profileArn**：之前 IdC 设备授权登录成功后，真实 profileArn 要等第一次实际请求才懒解析，中间约 2 分钟窗口内做模型测试会带占位 profileArn 打上游，吃 403 `bearer token invalid`。现在登录成功后立即主动调用 `resolve_profile_arn_for` 解析并回填，秒级完成。
-- **模型测试 403 兜底**：`test_credential_model` 在发请求前先确保真实 profileArn 已解析（即使即时回填因瞬态网络失败，这里再兜一次底），彻底消除新加 IdC 凭据后测试撞 403 的问题。
+- **模型测试 403 兜底**：`test_credential_model` 在发送请求前再次确认 `profileArn` 已解析，降低即时回填遇到瞬态网络失败后模型测试返回 403 的概率。
 
 ### 优化
 
@@ -402,7 +403,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 - **合并上游 v0.6.6**：同步官方账号分组管理、密钥模型重构、Native web_search 识别收窄等改动，并保留生产部署中的凭据导入去重、实时并发展示、余额展示、压测页、限流监控、代理/端点增强等本地补丁。
 - **修复合并适配问题**：补齐后端分组 handler/router、前端分组筛选状态和类型定义，解决官方分组 UI 与本地 dashboard/压测/限流功能的冲突。
 - **沉淀部署仓库**：创建并推送 `TWLW9784/freedom-kirors/main`，本地生产分支统一为 `main` 并跟踪 `github-deploy/main`；删除远端多余 `master` 分支。
-- **补充二次开发说明**：README 新增“二次开发说明”，明确本仓库是基于上游 `ZyphrZero/kiro.rs` 的二次开发与生产部署版本，并说明主要增强方向。
+- **补充下游项目说明**：README 说明本仓库基于上游项目 `ZyphrZero/kiro.rs` 独立维护，并列出主要扩展方向。
 - **清理本地 Git 风险对象**：清空旧 stash、过期 reflog 并 GC，避免历史 stash 中的运行时文件在误操作时被带出。
 - **验证结果**：`cargo check --release`、`npm --prefix admin-ui run build`、`cargo build --release` 通过；`kiro-rs.service` 为 `active`；`/admin`、`/api/admin/credentials`、`/api/admin/groups`、`/api/admin/traces/recent-stats`、`/api/admin/limiter/snapshots` 均返回 200。
 

@@ -32,26 +32,25 @@
 
 
 <a id="secondary-development"></a>
-## 🧩 二次开发说明
+## 🧩 项目说明
 
-本仓库是基于上游开源项目 [`ZyphrZero/kiro.rs`](https://github.com/ZyphrZero/kiro.rs) 的二次开发与生产部署版本。
+本仓库维护基于 [`ZyphrZero/kiro.rs`](https://github.com/ZyphrZero/kiro.rs) 的下游增强版本，重点改进多凭据管理、协议兼容性、可观测性和发布流程。
 
-在保留上游核心能力的基础上，本版本围绕实际运营和多账号调度场景做了增强，主要包括：
+主要扩展包括：
 
-- **生产部署补丁沉淀**：将线上长期使用的稳定改动整理为可追踪的 Git 提交，便于后续合并上游版本。
-- **凭据导入与去重增强**：支持更多 Kiro / KAM 导出格式，并在导入时按上游账号维度做重复检测，降低误导入风险。
-- **Admin UI 运维增强**：补充实时并发、余额、压测、限流监控、分组筛选等面向运营的管理能力。
-- **多凭据调度优化**：增强凭据级并发、最小请求间隔、端点选择、故障冷却和请求追踪能力。
-- **部署安全约束**：默认忽略运行时配置、凭据、客户端 Key、数据库、缓存和备份文件，避免敏感数据进入仓库。
-- **更新日志约束**：每次合并官方仓库、调整本地生产补丁或推送部署仓库时，都必须同步更新 `CHANGELOG.md`，记录变更内容、合并策略、验证结果和敏感文件检查结论。
-- **独立更新源**：在线更新默认使用本仓库的 GitHub Releases（`TWLW9784/freedom-kirors`），不会再从上游官方仓库下载二进制覆盖二次开发版本。
+- **凭据管理**：支持更多 Kiro / KAM 导出格式，并提供导入校验、去重和故障转移能力。
+- **管理界面**：提供并发、用量、压力测试、限流状态和分组筛选等管理功能。
+- **请求调度**：支持凭据级并发限制、最小请求间隔、端点选择、故障冷却和请求追踪。
+- **协议兼容**：在 Anthropic Messages API 基础上提供 OpenAI Chat Completions、Responses API 和 Claude Code 兼容端点。
+- **发布与更新**：GitHub Releases 提供多平台构建和校验文件；应用内更新默认使用本仓库的 Release 资产。
+- **敏感文件保护**：运行时配置、凭据、客户端 Key、数据库、缓存和备份文件默认不纳入版本控制。
 
-本仓库的目标不是替代上游项目，而是在上游基础上维护一个更贴近实际部署需求的增强版本。合并上游更新时，应优先保留上游架构和安全修复，再把本仓库的生产补丁重新适配进去。
+本仓库独立维护，不替代原项目。上游变更会按兼容性和安全性评估后合并；本仓库特有功能可能与上游版本存在差异。
 
 <a id="notice"></a>
 ## 📚 声明
 
-本项目仅供研究和自用。使用本项目产生的任何后果由使用者自行承担。本项目与 AWS、Kiro、Amazon Q、Anthropic、Claude 等官方实体无关，不代表任何官方立场。
+本项目是独立维护的开源项目，与 AWS、Kiro、Amazon Q、Anthropic 或 Claude 无隶属、授权或背书关系。相关名称和商标归其各自权利人所有。使用者应自行确认其使用方式符合适用的服务条款、法律法规及所在组织的安全要求。
 
 <a id="features"></a>
 ## ✨ 功能
@@ -535,6 +534,7 @@ KIRO_API_KEY=ksk_xxx ./kiro-rs
 - `gpt-5.6-terra`
 - `gpt-5.6-luna`
 - `claude-fable-5` / `claude-fable-5-thinking`
+- `claude-opus-5` / `claude-opus-5-thinking`
 - `claude-sonnet-5` / `claude-sonnet-5-thinking`
 - `claude-opus-4-8` / `claude-opus-4-8-thinking`
 - `claude-sonnet-4-8` / `claude-sonnet-4-8-thinking`
@@ -545,12 +545,13 @@ KIRO_API_KEY=ksk_xxx ./kiro-rs
 - `claude-sonnet-4-5-20250929` / `claude-sonnet-4-5-20250929-thinking`
 - `claude-haiku-4-5-20251001` / `claude-haiku-4-5-20251001-thinking`
 
-模型映射按关键词归一化到 Kiro 内部模型 ID：
+模型名会按关键词归一化为上游请求使用的模型标识符。带 `-thinking` 后缀的名称是本项目提供的客户端兼容别名：后缀用于启用 thinking 配置，不会作为独立的上游模型标识符发送。
 
 | 请求模型关键词 | 上游模型 |
 |---|---|
 | 以 `gpt-5` 开头 | 原样透传，例如 `gpt-5.6-sol` |
 | `fable`（任意） | `claude-fable-5` |
+| `opus` + `5`（`opus-5` / `opus5` / `opus.5`） | `claude-opus-5` |
 | `sonnet` + `5`（`sonnet-5` / `sonnet5` / `sonnet.5`） | `claude-sonnet-5` |
 | `sonnet` + `4-8` / `4.8` | `claude-sonnet-4.8` |
 | `sonnet` + `4-6` / `4.6` | `claude-sonnet-4.6` |
@@ -566,7 +567,7 @@ KIRO_API_KEY=ksk_xxx ./kiro-rs
 上下文窗口估算：
 
 - `gpt-5.*`：`272_000`（GPT-5.6 静态模型声明最大输出为 `64_000`）
-- `claude-sonnet-4.6`、`claude-sonnet-4.8`、`claude-sonnet-5`、`claude-opus-4.6`、`claude-opus-4.7`、`claude-opus-4.8`、`claude-fable-5`：`1_000_000`
+- `claude-sonnet-4.6`、`claude-sonnet-4.8`、`claude-sonnet-5`、`claude-opus-4.6`、`claude-opus-4.7`、`claude-opus-4.8`、`claude-opus-5`、`claude-fable-5`：`1_000_000`
 - 其它模型：`200_000`
 
 <a id="thinking-tools-websearch"></a>
