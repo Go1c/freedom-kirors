@@ -1,68 +1,69 @@
-# Release writing guidelines
+# 发布文案规范
 
-Release notes and `CHANGELOG.md` are public project documentation. Write them
-for users of the repository, not for a specific deployment.
+Release Notes 和 `CHANGELOG.md` 属于公开项目文档。文案应面向仓库使用者，
+而不是某个特定部署实例。
 
-## Terminology
+## 语言
 
-- Refer to `ZyphrZero/kiro.rs` as the **upstream project** or **upstream
-  repository**, not as the “official repository”.
-- Use **upstream service** only when referring to the remote API called by
-  kiro-rs.
-- Describe model identifiers as **upstream model identifiers** unless a
-  first-party API document explicitly defines them.
-- Clearly label names created by this project. For example, `-thinking` model
-  names are client-facing compatibility aliases, not separate upstream models.
-- Do not imply affiliation with, authorization by, or endorsement from AWS,
-  Kiro, Anthropic, or other vendors.
+- 发布文案统一使用标准简体中文。
+- 模型 ID、API 名称、代码符号、协议名和无法准确翻译的专有名词保留原文。
+- 标题和章节名称优先使用中文，例如“版本概述”“新增”“变更”“修复”
+  “验证”“兼容性说明”。
+- 避免中英文无必要混排；首次出现的专业术语可附英文原名。
 
-## Evidence and scope
+## 术语
 
-- Separate implemented behavior from observed availability.
-- Qualify environment-dependent results: model availability can vary by
-  account, region, rollout, and upstream changes.
-- State the exact validation performed (`cargo test`, `cargo check`, build
-  target, protocol test) without generalizing it to every environment.
-- Avoid “fully supported”, “all models”, “real limits”, “official behavior”,
-  or “completely fixed” unless the claim is directly documented and remains
-  stable.
+- 将 `ZyphrZero/kiro.rs` 称为“上游项目”或“上游仓库”，不要称为
+  “官方仓库”。
+- 仅在表示 kiro-rs 调用的远程 API 时使用“上游服务”。
+- 除非一方 API 文档明确规定，否则将模型 ID 表述为“上游模型标识符”。
+- 明确标注本项目创建的名称。例如，带 `-thinking` 后缀的模型名称是
+  客户端兼容别名，不是独立的上游模型。
+- 不得暗示本项目与 AWS、Kiro、Anthropic 等厂商存在隶属、授权或背书关系。
 
-## Public/private boundary
+## 证据与适用范围
 
-Do not include:
+- 区分“代码已实现”和“特定环境中可用”。
+- 对环境相关结果增加限定：模型可用性可能因账号、区域、灰度发布及
+  上游服务变化而不同。
+- 准确列出已经执行的验证，例如 `cargo test`、`cargo check`、构建目标或
+  协议请求测试，不得将单一环境的结果扩展为普遍结论。
+- 除非有稳定、可核验的直接证据，否则不要使用“完全支持”“全部模型”
+  “真实上限”“官方行为”“彻底修复”等绝对化表达。
 
-- production hostnames, service names, local paths, credential IDs, account
-  status, or private deployment state;
-- “current account pool”, “production binary”, “already deployed”, or similar
-  instance-specific language;
-- internal rollback notes, incident details, private monitoring results, or
-  operational instructions unrelated to release users.
+## 公开与内部信息边界
 
-Keep deployment-specific evidence in private operations notes rather than the
-public changelog.
+公开文案不得包含：
 
-## Recommended structure
+- 生产域名、服务名称、本地路径、凭据 ID、账号状态或私有部署状态；
+- “当前号池”“线上二进制”“已经部署”等特定实例表达；
+- 内部回滚记录、事故细节、私有监控结果或与发布用户无关的运维步骤。
+
+部署实例相关的验证和运维记录应保存到内部运维文档，不应写入公开
+Changelog。
+
+## 推荐结构
 
 ```markdown
-## Summary
+## 版本概述
 
-One or two sentences describing the user-visible purpose of the release.
+用一到两句话说明该版本对使用者可见的主要变化。
 
-### Added
-- New capabilities.
+### 新增
+- 新增能力。
 
-### Changed
-- Behavior changes and compatibility notes.
+### 变更
+- 行为变化和兼容性调整。
 
-### Fixed
-- Defects corrected.
+### 修复
+- 已修复的问题。
 
-### Validation
-- Reproducible tests and builds that completed successfully.
+### 验证
+- 已完成且可复现的测试和构建。
 
-### Compatibility notes
-- Rollout, account, region, migration, or backward-compatibility constraints.
+### 兼容性说明
+- 灰度发布、账号、区域、迁移或向后兼容限制。
 ```
 
-Use only the sections that apply. Prefer concise technical language over
-promotional wording.
+仅保留适用于当前版本的章节。优先使用准确、简洁的技术表达，避免宣传化
+和内部运维式措辞。
